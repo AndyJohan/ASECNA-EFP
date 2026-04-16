@@ -1,12 +1,25 @@
-﻿import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
+import { SummaryQueryDto } from './dto/summary-query.dto';
 import { HistoriqueService } from './historique.service';
 
 @Controller('historique')
 export class HistoriqueController {
   constructor(private readonly historiqueService: HistoriqueService) {}
 
+  @Get('summary')
+  getHistoriqueSummary(@Query('period') period?: string) {
+    const query: SummaryQueryDto = { period };
+    return this.historiqueService.getSummary(query);
+  }
+
   @Get()
-  getHistorique() {
-    return this.historiqueService.getHistorique();
+  getHistoriqueDefault() {
+    return this.historiqueService.getSummary({});
+  }
+
+  @Get('details')
+  getHistoriqueDetails(@Query('period') period?: string) {
+    const query: SummaryQueryDto = { period };
+    return this.historiqueService.getDetails(query);
   }
 }

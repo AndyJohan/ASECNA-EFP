@@ -1,8 +1,8 @@
-﻿import { assistantMessages } from '../data';
+import { assistantMessages } from '../data';
 
 function AssistantPage() {
   return (
-    <section className="section">
+    <section className="section page-assistant">
       <header className="topbar">
         <div>
           <p className="eyebrow">Assistant IA</p>

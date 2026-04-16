@@ -1,8 +1,8 @@
-﻿import { predictionList } from '../data';
+import { predictionList } from '../data';
 
 function PredictionPage() {
   return (
-    <section className="section">
+    <section className="section page-prediction">
       <header className="topbar">
         <div>
           <p className="eyebrow">Prediction</p>

@@ -1,6 +1,6 @@
-﻿function SupportPage() {
+function SupportPage() {
   return (
-    <section className="section">
+    <section className="section page-support">
       <header className="topbar">
         <div>
           <p className="eyebrow">Support</p>

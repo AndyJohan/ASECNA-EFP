@@ -106,3 +106,28 @@ Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
 3. Lancer l'API avec `npm run start:dev`.
 
 Les valeurs sont chargees via `@nestjs/config` et peuvent changer selon l'environnement sans modifier le code.
+
+## Schema PostgreSQL (historique des pannes)
+
+Le schema est disponible dans `sql/schema.sql`.
+- Tables: `sites`, `domains`, `equipments`, `monthly_reports`, `daily_equipment_stats`.
+- Colonnes `heures` et `pannes` correspondent aux colonnes "heure" et "panne" des fichiers Excel.
+
+## Import Excel -> PostgreSQL
+
+Script: `scripts/import-excel.js`
+
+Exemple (dossier):
+```
+npm run import:excel -- "C:\\Users\\ommes\\Desktop\\PV2025"
+```
+
+Exemple (fichier):
+```
+npm run import:excel -- "C:\\Users\\ommes\\Desktop\\PV2025\\Nouveau dossier\\2025\\COM 2025.xlsx"
+```
+
+Le script:
+- ignore les feuilles "Indications"
+- detecte `Site:` et `Periode:`
+- charge les equipements + pannes par jour

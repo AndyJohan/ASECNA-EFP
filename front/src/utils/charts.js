@@ -1,4 +1,4 @@
-﻿export const chartSizes = { width: 620, height: 220, padding: 24 };
+export const chartSizes = { width: 620, height: 220, padding: 24 };
 
 export function buildLinePath(points, width, height, padding) {
   const values = points.map((point) => point.value);
@@ -30,5 +30,6 @@ export function buildDonutGradient(slices) {
     current += slice.value;
     return `${slice.color} ${start}% ${current}%`;
   });
+
   return `conic-gradient(${parts.join(', ')})`;
 }

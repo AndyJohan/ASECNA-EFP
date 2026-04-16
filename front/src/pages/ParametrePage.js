@@ -1,6 +1,6 @@
-﻿function ParametrePage() {
+function ParametrePage() {
   return (
-    <section className="section">
+    <section className="section page-parametre">
       <header className="topbar">
         <div>
           <p className="eyebrow">Parametre</p>

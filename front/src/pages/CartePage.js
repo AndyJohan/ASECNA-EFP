@@ -1,6 +1,6 @@
-﻿function CartePage() {
+function CartePage() {
   return (
-    <section className="section">
+    <section className="section page-carte">
       <header className="topbar">
         <div>
           <p className="eyebrow">Carte</p>

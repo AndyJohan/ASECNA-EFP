@@ -1,4 +1,4 @@
-﻿export const panneTrend = [
+export const panneTrend = [
   { label: 'Jul 01', value: 32 },
   { label: 'Jul 04', value: 38 },
   { label: 'Jul 07', value: 29 },
@@ -20,13 +20,19 @@ export const resolutionBreakdown = [
   { label: 'Reporte', value: 8, color: 'var(--slate)' },
 ];
 
-export const dataTransfers = [5, 12, 9, 14, 10, 18, 7, 13, 9, 16, 11, 14];
-
 export const visitesParSite = [
   { site: 'Antananarivo', visits: 1242 },
   { site: 'Dakar', visits: 985 },
   { site: 'Libreville', visits: 762 },
   { site: 'Abidjan', visits: 1108 },
+];
+
+export const pannesParEquipement = [
+  { equipement: 'VHF SOL', pannes: 14 },
+  { equipement: 'VHF TWR', pannes: 9 },
+  { equipement: 'VHF APP', pannes: 6 },
+  { equipement: 'RADIOSONDAGE', pannes: 11 },
+  { equipement: 'SAAPI', pannes: 7 },
 ];
 
 export const historiquePannes = [
