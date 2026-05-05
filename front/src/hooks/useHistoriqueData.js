@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchHistoriqueDetails, fetchHistoriqueSummary } from '../services/historiqueApi';
 
-export function useHistoriqueData(period) {
+export function useHistoriqueData(period, category) {
   const [summary, setSummary] = useState(null);
   const [details, setDetails] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,8 +21,8 @@ export function useHistoriqueData(period) {
 
       try {
         const [summaryData, detailsData] = await Promise.all([
-          fetchHistoriqueSummary(period),
-          fetchHistoriqueDetails(period),
+          fetchHistoriqueSummary(period, category),
+          fetchHistoriqueDetails(period, category),
         ]);
 
         if (!active) {
@@ -51,7 +51,7 @@ export function useHistoriqueData(period) {
     return () => {
       active = false;
     };
-  }, [period, reloadKey]);
+  }, [category, period, reloadKey]);
 
   return {
     summary,

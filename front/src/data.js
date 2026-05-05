@@ -13,11 +13,11 @@ export const panneTrend = [
   { label: 'Jul 31', value: 52 },
 ];
 
-export const resolutionBreakdown = [
-  { label: 'Resolu', value: 62, color: 'var(--mint)' },
-  { label: 'En cours', value: 21, color: 'var(--peach)' },
-  { label: 'Critique', value: 9, color: 'var(--berry)' },
-  { label: 'Reporte', value: 8, color: 'var(--slate)' },
+export const categoryBreakdown = [
+  { label: 'COM', value: 38, color: 'var(--mint)', count: 19 },
+  { label: 'MET', value: 27, color: 'var(--peach)', count: 13 },
+  { label: 'SURV', value: 21, color: 'var(--berry)', count: 10 },
+  { label: 'RESEAU', value: 14, color: 'var(--slate)', count: 7 },
 ];
 
 export const visitesParSite = [

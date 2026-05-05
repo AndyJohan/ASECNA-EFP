@@ -1,15 +1,29 @@
 import { httpClient } from './httpClient';
 
-export async function fetchHistoriqueSummary(period) {
+function buildHistoriqueParams(period, category) {
+  const params = {};
+
+  if (period) {
+    params.period = period;
+  }
+
+  if (category && category !== 'ALL') {
+    params.category = category;
+  }
+
+  return Object.keys(params).length ? params : undefined;
+}
+
+export async function fetchHistoriqueSummary(period, category) {
   const { data } = await httpClient.get('/historique/summary', {
-    params: period ? { period } : undefined,
+    params: buildHistoriqueParams(period, category),
   });
   return data;
 }
 
-export async function fetchHistoriqueDetails(period) {
+export async function fetchHistoriqueDetails(period, category) {
   const { data } = await httpClient.get('/historique/details', {
-    params: period ? { period } : undefined,
+    params: buildHistoriqueParams(period, category),
   });
   return Array.isArray(data) ? data : [];
 }

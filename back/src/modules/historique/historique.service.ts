@@ -13,27 +13,29 @@ export class HistoriqueService {
 
   async getSummary(query: SummaryQueryDto) {
     const period = await this.resolvePeriod(query.period);
+    const category = this.normalizeCategory(query.category);
 
     if (!period) {
       return {
         period: null,
         trend: [],
-        resolutionBreakdown: [],
+        categoryBreakdown: [],
         pannesParEquipement: [],
         dernierIncident: null,
       };
     }
 
-    const [trend, pannesParEquipement, dernierIncident] = await Promise.all([
-      this.getTrend(period),
-      this.getPannesParEquipement(period),
-      this.getDernierIncident(period),
+    const [trend, categoryBreakdown, pannesParEquipement, dernierIncident] = await Promise.all([
+      this.getTrend(period, category),
+      this.getCategoryBreakdown(period),
+      this.getPannesParEquipement(period, category),
+      this.getDernierIncident(period, category),
     ]);
 
     return {
       period,
       trend,
-      resolutionBreakdown: [],
+      categoryBreakdown,
       pannesParEquipement,
       dernierIncident,
     };
@@ -41,20 +43,27 @@ export class HistoriqueService {
 
   async getDetails(query: SummaryQueryDto) {
     const period = await this.resolvePeriod(query.period);
+    const category = this.normalizeCategory(query.category);
 
     if (!period) {
       return [];
     }
 
-    const rows = await this.panneRepository
+    const rowsQuery = this.panneRepository
       .createQueryBuilder('panne')
       .innerJoin('panne.equipement', 'equipement')
       .select('equipement.nomEquipement', 'equipement')
       .addSelect('equipement.categorie', 'categorie')
-      .addSelect('panne.dates', 'date')
+      .addSelect("TO_CHAR(panne.dates, 'YYYY-MM-DD')", 'date')
       .addSelect('panne.heure', 'heure')
       .addSelect('panne.commentaires', 'commentaires')
-      .where("date_trunc('month', panne.dates) = :period", { period })
+      .where("date_trunc('month', panne.dates) = :period", { period });
+
+    if (category) {
+      rowsQuery.andWhere('equipement.categorie = :category', { category });
+    }
+
+    const rows = await rowsQuery
       .orderBy('panne.dates', 'DESC')
       .addOrderBy('panne.heure', 'DESC')
       .limit(50)
@@ -91,12 +100,19 @@ export class HistoriqueService {
     return row?.period ?? null;
   }
 
-  private async getTrend(period: string) {
-    const rows = await this.panneRepository
+  private async getTrend(period: string, category?: string | null) {
+    const rowsQuery = this.panneRepository
       .createQueryBuilder('panne')
+      .innerJoin('panne.equipement', 'equipement')
       .select('EXTRACT(DAY FROM panne.dates)', 'day')
       .addSelect('COUNT(*)', 'value')
-      .where("date_trunc('month', panne.dates) = :period", { period })
+      .where("date_trunc('month', panne.dates) = :period", { period });
+
+    if (category) {
+      rowsQuery.andWhere('equipement.categorie = :category', { category });
+    }
+
+    const rows = await rowsQuery
       .groupBy('day')
       .orderBy('day', 'ASC')
       .getRawMany<{ day: string; value: string }>();
@@ -107,13 +123,19 @@ export class HistoriqueService {
     }));
   }
 
-  private async getPannesParEquipement(period: string) {
-    const rows = await this.panneRepository
+  private async getPannesParEquipement(period: string, category?: string | null) {
+    const rowsQuery = this.panneRepository
       .createQueryBuilder('panne')
       .innerJoin('panne.equipement', 'equipement')
       .select('equipement.nomEquipement', 'equipement')
       .addSelect('COUNT(*)', 'pannes')
-      .where("date_trunc('month', panne.dates) = :period", { period })
+      .where("date_trunc('month', panne.dates) = :period", { period });
+
+    if (category) {
+      rowsQuery.andWhere('equipement.categorie = :category', { category });
+    }
+
+    const rows = await rowsQuery
       .groupBy('equipement.nomEquipement')
       .orderBy('COUNT(*)', 'DESC')
       .limit(5)
@@ -125,16 +147,45 @@ export class HistoriqueService {
     }));
   }
 
-  private async getDernierIncident(period: string) {
-    const row = await this.panneRepository
+  private async getCategoryBreakdown(period: string) {
+    const rows = await this.panneRepository
+      .createQueryBuilder('panne')
+      .innerJoin('panne.equipement', 'equipement')
+      .select('COALESCE(equipement.categorie, :fallback)', 'label')
+      .addSelect('COUNT(*)', 'count')
+      .where("date_trunc('month', panne.dates) = :period", { period })
+      .setParameter('fallback', 'NON RENSEIGNEE')
+      .groupBy('COALESCE(equipement.categorie, :fallback)')
+      .orderBy('COUNT(*)', 'DESC')
+      .getRawMany<{ label: string; count: string }>();
+
+    const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    const colors = ['var(--mint)', 'var(--peach)', 'var(--berry)', 'var(--slate)', '#7dd3fc'];
+
+    return rows.map((row, index) => ({
+      label: row.label,
+      value: total ? Math.round((Number(row.count) / total) * 100) : 0,
+      count: Number(row.count),
+      color: colors[index % colors.length],
+    }));
+  }
+
+  private async getDernierIncident(period: string, category?: string | null) {
+    const rowQuery = this.panneRepository
       .createQueryBuilder('panne')
       .innerJoin('panne.equipement', 'equipement')
       .select('equipement.nomEquipement', 'equipement')
       .addSelect('equipement.categorie', 'categorie')
-      .addSelect('panne.dates', 'date')
+      .addSelect("TO_CHAR(panne.dates, 'YYYY-MM-DD')", 'date')
       .addSelect('panne.heure', 'heure')
       .addSelect('panne.commentaires', 'commentaires')
-      .where("date_trunc('month', panne.dates) = :period", { period })
+      .where("date_trunc('month', panne.dates) = :period", { period });
+
+    if (category) {
+      rowQuery.andWhere('equipement.categorie = :category', { category });
+    }
+
+    const row = await rowQuery
       .orderBy('panne.dates', 'DESC')
       .addOrderBy('panne.heure', 'DESC')
       .limit(1)
@@ -157,5 +208,14 @@ export class HistoriqueService {
       heure: row.heure ?? null,
       commentaires: row.commentaires ?? null,
     };
+  }
+
+  private normalizeCategory(category?: string) {
+    const cleaned = String(category ?? '').trim();
+    if (!cleaned || cleaned === 'ALL') {
+      return null;
+    }
+
+    return cleaned.toUpperCase();
   }
 }

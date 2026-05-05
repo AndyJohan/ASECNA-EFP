@@ -1,5 +1,6 @@
-﻿import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Put } from '@nestjs/common';
 import { ParametreService } from './parametre.service';
+import { UpdateParametresDto } from './dto/update-parametres.dto';
 
 @Controller('parametre')
 export class ParametreController {
@@ -8,5 +9,10 @@ export class ParametreController {
   @Get()
   getParametres() {
     return this.parametreService.getParametres();
+  }
+
+  @Put()
+  updateParametres(@Body() body: UpdateParametresDto) {
+    return this.parametreService.updateParametres(body);
   }
 }

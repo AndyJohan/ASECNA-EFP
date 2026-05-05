@@ -7,8 +7,8 @@ export class HistoriqueController {
   constructor(private readonly historiqueService: HistoriqueService) {}
 
   @Get('summary')
-  getHistoriqueSummary(@Query('period') period?: string) {
-    const query: SummaryQueryDto = { period };
+  getHistoriqueSummary(@Query('period') period?: string, @Query('category') category?: string) {
+    const query: SummaryQueryDto = { period, category };
     return this.historiqueService.getSummary(query);
   }
 
@@ -18,8 +18,8 @@ export class HistoriqueController {
   }
 
   @Get('details')
-  getHistoriqueDetails(@Query('period') period?: string) {
-    const query: SummaryQueryDto = { period };
+  getHistoriqueDetails(@Query('period') period?: string, @Query('category') category?: string) {
+    const query: SummaryQueryDto = { period, category };
     return this.historiqueService.getDetails(query);
   }
 }

@@ -3,7 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as xlsx from 'xlsx';
 import { FRENCH_MONTHS, IMPORT_STATUS } from '../../common/constants/import.constants';
-import { buildIsoDate, normalizeText, parseExcelTime } from '../../common/utils/import.utils';
+import {
+  buildIsoDate,
+  isValidCalendarDate,
+  normalizeText,
+  parseExcelTime,
+} from '../../common/utils/import.utils';
 import { Equipement } from '../../entities/equipement.entity';
 import { Panne } from '../../entities/panne.entity';
 import { ImportOptionsDto } from './dto/import-options.dto';
@@ -13,6 +18,14 @@ type ParsedEquipement = {
   heureIndex: number;
   panneIndex: number;
 };
+
+type HeaderMapping = {
+  equipements: ParsedEquipement[];
+  dataStartIndex: number;
+};
+
+const PANNE_HEADERS = ['panne', 'pannes'];
+const HEURE_HEADERS = ['heure'];
 
 @Injectable()
 export class ImportService {
@@ -49,15 +62,21 @@ export class ImportService {
         continue;
       }
 
-      const parsedEquipements = this.parseEquipements(rows[0] ?? [], rows[1] ?? []);
-      if (!parsedEquipements.length) {
+      const headerRowIndex = this.findHeaderRowIndex(rows);
+      if (headerRowIndex === -1) {
+        this.logger.warn(`Ligne d'entete introuvable dans la feuille ${sheetName}.`);
+        continue;
+      }
+
+      const headerMapping = this.resolveHeaderMapping(rows, headerRowIndex);
+      if (!headerMapping.equipements.length) {
         this.logger.warn(`Aucun equipement detecte dans la feuille ${sheetName}.`);
         continue;
       }
 
       let lignesLues = 0;
 
-      for (let rowIndex = 2; rowIndex < rows.length; rowIndex += 1) {
+      for (let rowIndex = headerMapping.dataStartIndex; rowIndex < rows.length; rowIndex += 1) {
         const row = rows[rowIndex] ?? [];
         const day = parseInt(String(row[0] ?? '').trim(), 10);
 
@@ -65,10 +84,17 @@ export class ImportService {
           continue;
         }
 
+        if (!isValidCalendarDate(year, month, day)) {
+          this.logger.warn(
+            `Date ignoree dans ${sheetName}: jour ${day} invalide pour ${String(month).padStart(2, '0')}/${year}.`,
+          );
+          continue;
+        }
+
         lignesLues += 1;
         const dateString = buildIsoDate(year, month, day);
 
-        for (const equipementInfo of parsedEquipements) {
+        for (const equipementInfo of headerMapping.equipements) {
           const rawPanne = String(row[equipementInfo.panneIndex] ?? '').trim();
           if (rawPanne === '') {
             continue;
@@ -79,10 +105,21 @@ export class ImportService {
             continue;
           }
 
+          if (panneNumeric !== 1) {
+            continue;
+          }
+
           const equipement = await this.getOrCreateEquipement(equipementInfo.name, categoryName);
+          const rawHeure = row[equipementInfo.heureIndex];
           const heure = parseExcelTime(row[equipementInfo.heureIndex]);
           const commentaires =
-            panneNumeric === 1 ? IMPORT_STATUS.FAILURE : IMPORT_STATUS.OPERATIONAL;
+            this.extractCellComment(sheet, rowIndex, equipementInfo.panneIndex) ?? IMPORT_STATUS.FAILURE;
+
+          if (rawHeure !== null && rawHeure !== undefined && String(rawHeure).trim() !== '' && !heure) {
+            this.logger.warn(
+              `Heure non interpretable ignoree dans ${sheetName} | equipement=${equipementInfo.name} | jour=${day} | valeur=${String(rawHeure)}`,
+            );
+          }
 
           const recordQuery = this.panneRepository
             .createQueryBuilder('panne')
@@ -117,7 +154,7 @@ export class ImportService {
       }
 
       this.logger.log(
-        `[${sheetName}] equipements: ${parsedEquipements.map((item) => item.name).join(', ')} | lignes lues: ${lignesLues}`,
+        `[${sheetName}] equipements: ${headerMapping.equipements.map((item) => item.name).join(', ')} | lignes lues: ${lignesLues}`,
       );
     }
 
@@ -141,7 +178,6 @@ export class ImportService {
       const nombrePannes = await this.panneRepository.count({
         where: {
           equipement: { id: equipement.id },
-          commentaires: IMPORT_STATUS.FAILURE,
         },
       });
 
@@ -190,17 +226,24 @@ export class ImportService {
       const currentSubHeader = normalizeText(String(row1[index] ?? '').trim());
       const nextSubHeader = normalizeText(String(row1[index + 1] ?? '').trim());
 
-      let heureIndex = index;
+      let heureIndex = -1;
       let panneIndex = -1;
 
-      if (currentSubHeader === 'panne') {
+      if (HEURE_HEADERS.includes(currentSubHeader) && PANNE_HEADERS.includes(nextSubHeader)) {
+        heureIndex = index;
+        panneIndex = index + 1;
+      } else if (PANNE_HEADERS.includes(currentSubHeader)) {
         panneIndex = index;
         heureIndex = Math.max(1, index - 1);
-      } else if (nextSubHeader === 'panne') {
+      } else if (HEURE_HEADERS.includes(currentSubHeader) && PANNE_HEADERS.includes(currentSubHeader)) {
+        heureIndex = index;
+        panneIndex = index + 1;
+      } else if (PANNE_HEADERS.includes(nextSubHeader)) {
+        heureIndex = index;
         panneIndex = index + 1;
       }
 
-      if (panneIndex === -1) {
+      if (heureIndex === -1 || panneIndex === -1) {
         continue;
       }
 
@@ -212,6 +255,59 @@ export class ImportService {
     }
 
     return equipements;
+  }
+
+  private resolveHeaderMapping(
+    rows: Array<Array<string | number | null>>,
+    headerRowIndex: number,
+  ): HeaderMapping {
+    const candidates: HeaderMapping[] = [];
+
+    candidates.push({
+      equipements: this.parseEquipements(rows[headerRowIndex] ?? [], rows[headerRowIndex + 1] ?? []),
+      dataStartIndex: headerRowIndex + 2,
+    });
+
+    if (headerRowIndex > 0) {
+      candidates.push({
+        equipements: this.parseEquipements(rows[headerRowIndex - 1] ?? [], rows[headerRowIndex] ?? []),
+        dataStartIndex: headerRowIndex + 1,
+      });
+    }
+
+    return candidates.sort((left, right) => right.equipements.length - left.equipements.length)[0] ?? {
+      equipements: [],
+      dataStartIndex: headerRowIndex + 2,
+    };
+  }
+
+  private findHeaderRowIndex(rows: Array<Array<string | number | null>>) {
+    return rows.findIndex((row) =>
+      row.some((cell) => normalizeText(String(cell ?? '')) === 'jour'),
+    );
+  }
+
+  private extractCellComment(
+    sheet: xlsx.WorkSheet,
+    rowIndex: number,
+    columnIndex: number,
+  ) {
+    const cellAddress = xlsx.utils.encode_cell({ r: rowIndex, c: columnIndex });
+    const cell = sheet[cellAddress] as
+      | (xlsx.CellObject & { c?: Array<{ t?: string }> })
+      | undefined;
+
+    if (!cell?.c?.length) {
+      return null;
+    }
+
+    const comment = cell.c
+      .map((entry) => String(entry.t ?? '').trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+
+    return comment || null;
   }
 
   private extractCategory(filename: string) {
