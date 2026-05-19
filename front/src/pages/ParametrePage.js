@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
+import { CATEGORY_VALUES, formatCategoryLabel } from '../constants/filterOptions';
 import { fetchParametres, saveParametres } from '../services/parametreApi';
-
-const CATEGORY_OPTIONS = ['ALL', 'COM', 'SURV', 'MET', 'RESEAU'];
 
 const DEFAULT_STATE = {
   seuils: { critique: 80, eleve: 65, moyen: 45 },
@@ -272,11 +271,11 @@ function ParametrePage() {
                     updateSection('assistant', 'defaultCategory', event.target.value)
                   }
                 >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option === 'ALL' ? 'Toutes les categories' : option}
-                    </option>
-                  ))}
+                    {CATEGORY_VALUES.map((option) => (
+                      <option key={option} value={option}>
+                        {formatCategoryLabel(option)}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label className="settings-field">
@@ -387,11 +386,11 @@ function ParametrePage() {
                     updateSection('dashboard', 'defaultCategory', event.target.value)
                   }
                 >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option === 'ALL' ? 'Toutes les categories' : option}
-                    </option>
-                  ))}
+                    {CATEGORY_VALUES.map((option) => (
+                      <option key={option} value={option}>
+                        {formatCategoryLabel(option)}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label className="settings-field">

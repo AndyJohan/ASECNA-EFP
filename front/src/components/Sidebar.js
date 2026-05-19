@@ -3,23 +3,45 @@ import { NavLink } from 'react-router-dom';
 
 const DESKTOP_BREAKPOINT = 860;
 
-const navItems = [
-  { to: '/historique', label: 'Historique', icon: '/icons/historique.png' },
-  { to: '/prediction', label: 'Prediction', icon: '/icons/prediction.png' },
-  { to: '/carte', label: 'Carte', icon: '/icons/adresse.png' },
-  { to: '/assistant-ia', label: 'Assistant IA', icon: '/icons/assistant.png' },
-  { to: '/parametre', label: 'Parametre', icon: '/icons/parametre.png' },
-  { to: '/support', label: 'Support', icon: '/icons/support.png' },
+const navSections = [
+  {
+    title: 'Menu',
+    items: [
+      { to: '/historique', label: 'Historique', icon: '/icons/historique.png' },
+      { to: '/prediction', label: 'Prediction', icon: '/icons/prediction.png' },
+      { to: '/carte', label: 'Carte', icon: '/icons/adresse.png' },
+      { to: '/assistant-ia', label: 'Assistant IA', icon: '/icons/assistant.png' },
+    ],
+  },
+  {
+    title: 'General',
+    items: [
+      { to: '/parametre', label: 'Parametre', icon: '/icons/parametre.png' },
+      { to: '/support', label: 'Support', icon: '/icons/support.png' },
+    ],
+  },
 ];
 
 function Sidebar() {
   const linkClass = ({ isActive }) => `nav-link${isActive ? ' active' : ''}`;
-  const [isOpen, setIsOpen] = useState(() => {
+  const [isOpen, setIsOpen] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(() => {
     if (typeof window === 'undefined') {
       return true;
     }
     return window.innerWidth >= DESKTOP_BREAKPOINT;
   });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= DESKTOP_BREAKPOINT);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     document.body.classList.toggle('sidebar-open', isOpen);
@@ -38,46 +60,52 @@ function Sidebar() {
           >
             <span className={isOpen ? 'icon-arrow' : 'icon-bars'}></span>
           </button>
-          <div className="brand-icon">
-            <img src="/logo.png" alt="Logo ASECNA" />
-          </div>
-          <div>
-            <p className="brand-title">ASECNA EFP</p>
-            <span className="brand-sub">Centre de pilotage</span>
-          </div>
         </div>
       </div>
 
       <div
-        className={`sidebar-overlay ${isOpen ? 'show' : ''}`}
-        onClick={() => setIsOpen(false)}
+        className={`sidebar-overlay ${isOpen && !isDesktop ? 'show' : ''}`}
+        onClick={() => {
+          if (!isDesktop) {
+            setIsOpen(false);
+          }
+        }}
         role="button"
         tabIndex={0}
         aria-label="Fermer le menu"
         onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
+          if (!isDesktop && (event.key === 'Enter' || event.key === ' ')) {
             setIsOpen(false);
           }
         }}
       ></div>
 
       <aside className={`sidebar ${isOpen ? 'open' : 'collapsed'}`}>
-        <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <NavLink key={item.to} className={linkClass} to={item.to}>
-              <span className="nav-icon" aria-hidden="true">
-                <img src={item.icon} alt="" />
-              </span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="sidebar-footer">
-          <p className="footer-title">Etat de la plateforme</p>
-          <div className="status-pill">Synchronisation OK</div>
-          <p className="footer-note">Donnees connectees: Base metier (a integrer)</p>
+        <div className="sidebar-brand-card">
+          <div className="brand-icon sidebar-brand-icon">
+            <img src="/logo.png" alt="Logo ASECNA" />
+          </div>
+          <div>
+            <p className="brand-title sidebar-brand-title">ASECNA EFP</p>
+            <span className="brand-sub sidebar-brand-sub">Centre de pilotage</span>
+          </div>
         </div>
+
+        {navSections.map((section) => (
+          <div key={section.title} className="sidebar-nav-section">
+            <p className="sidebar-section-title">{section.title}</p>
+            <nav className="sidebar-nav">
+              {section.items.map((item) => (
+                <NavLink key={item.to} className={linkClass} to={item.to}>
+                  <span className="nav-icon" aria-hidden="true">
+                    <img src={item.icon} alt="" />
+                  </span>
+                  <span className="nav-label">{item.label}</span>
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        ))}
       </aside>
     </div>
   );

@@ -4,6 +4,7 @@ import {
   pannesParEquipement as fallbackPannes,
 } from '../data';
 import ImportToolbar from '../components/ImportToolbar';
+import { CATEGORY_OPTIONS, MONTH_OPTIONS, YEAR_OPTIONS } from '../constants/filterOptions';
 import { useHistoriqueData } from '../hooks/useHistoriqueData';
 import { exportHistoriqueSummaryPdf } from '../utils/historiquePdf';
 
@@ -17,35 +18,8 @@ const GRAPH_DIMENSIONS = {
 };
 
 const Y_AXIS_TICKS = [0, 2, 4, 6, 8, 10];
-
-const MONTH_OPTIONS = [
-  { value: '01', label: 'Janvier' },
-  { value: '02', label: 'Fevrier' },
-  { value: '03', label: 'Mars' },
-  { value: '04', label: 'Avril' },
-  { value: '05', label: 'Mai' },
-  { value: '06', label: 'Juin' },
-  { value: '07', label: 'Juillet' },
-  { value: '08', label: 'Aout' },
-  { value: '09', label: 'Septembre' },
-  { value: '10', label: 'Octobre' },
-  { value: '11', label: 'Novembre' },
-  { value: '12', label: 'Decembre' },
-];
-
-const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from(
-  { length: CURRENT_YEAR - 2009 + 1 },
-  (_, index) => String(CURRENT_YEAR - index),
-);
-
-const CATEGORY_OPTIONS = [
-  { value: 'ALL', label: 'Toutes les categories' },
-  { value: 'COM', label: 'COM' },
-  { value: 'SURV', label: 'SURV' },
-  { value: 'MET', label: 'MET' },
-  { value: 'RESEAU', label: 'RESEAU' },
-];
+const DEFAULT_HISTORY_ROWS = 8;
+const HOUR_AXIS_TICKS = ['00', '03', '06', '09', '12', '15', '18', '21', '23'];
 
 function formatMonthLabel(period) {
   if (!period) return 'Mois: --';
@@ -55,7 +29,14 @@ function formatMonthLabel(period) {
 }
 
 function buildStepPaths(points, dimensions) {
-  const maxValue = Math.max(10, ...points.map((point) => point.value));
+  let maxValue = 10;
+  for (const point of points) {
+    const value = Number(point.value || 0);
+    if (value > maxValue) {
+      maxValue = value;
+    }
+  }
+
   const step =
     (dimensions.width - dimensions.paddingLeft - dimensions.paddingRight) /
     (points.length - 1 || 1);
@@ -99,9 +80,10 @@ function buildMonthlyTrend(trend, year, month) {
   }
 
   const totalDays = getDaysInMonth(year, month);
-  const trendByDay = new Map(
-    trend.map((point) => [String(point.label).padStart(2, '0'), point.value]),
-  );
+  const trendByDay = new Map();
+  for (const point of trend) {
+    trendByDay.set(String(point.label).padStart(2, '0'), point.value);
+  }
 
   return Array.from({ length: totalDays }, (_, index) => {
     const dayLabel = String(index + 1).padStart(2, '0');
@@ -127,6 +109,42 @@ function normalizeApiDate(value) {
 
   const text = String(value);
   return text.length >= 10 ? text.slice(0, 10) : text;
+}
+
+function normalizeHourLabel(value) {
+  if (!value) {
+    return null;
+  }
+
+  const match = String(value).match(/^(\d{1,2})/);
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number(match[1]);
+  if (Number.isNaN(hour) || hour < 0 || hour > 23) {
+    return null;
+  }
+
+  return String(hour).padStart(2, '0');
+}
+
+function buildHourlyTrend(details) {
+  const counts = Array.from({ length: 24 }, (_, hour) => ({
+    label: String(hour).padStart(2, '0'),
+    value: 0,
+  }));
+
+  for (const item of details) {
+    const hourLabel = normalizeHourLabel(item.heure);
+    if (!hourLabel) {
+      continue;
+    }
+
+    counts[Number(hourLabel)].value += 1;
+  }
+
+  return counts;
 }
 
 function polarToCartesian(cx, cy, radius, angleInDegrees) {
@@ -160,9 +178,13 @@ function HistoriquePage() {
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [hoveredPoint, setHoveredPoint] = useState(null);
+  const [hoveredHourPoint, setHoveredHourPoint] = useState(null);
   const [hoveredDonutIndex, setHoveredDonutIndex] = useState(null);
   const [selectedDayLabel, setSelectedDayLabel] = useState(null);
+  const [selectedHourLabel, setSelectedHourLabel] = useState(null);
+  const [detailMode, setDetailMode] = useState('day');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
 
   const selectedPeriod =
     selectedYear && selectedMonth ? `${selectedYear}-${selectedMonth}` : undefined;
@@ -183,6 +205,48 @@ function HistoriquePage() {
     [selectedMonth, selectedYear, trend],
   );
 
+  const hourlyTrend = useMemo(() => buildHourlyTrend(historiquePannes), [historiquePannes]);
+
+  const detailsByDate = useMemo(() => {
+    const grouped = new Map();
+
+    for (const item of historiquePannes) {
+      const normalizedDate = normalizeApiDate(item.date);
+      if (!normalizedDate) {
+        continue;
+      }
+
+      const existingItems = grouped.get(normalizedDate);
+      if (existingItems) {
+        existingItems.push(item);
+      } else {
+        grouped.set(normalizedDate, [item]);
+      }
+    }
+
+    return grouped;
+  }, [historiquePannes]);
+
+  const detailsByHour = useMemo(() => {
+    const grouped = new Map();
+
+    for (const item of historiquePannes) {
+      const normalizedHour = normalizeHourLabel(item.heure);
+      if (!normalizedHour) {
+        continue;
+      }
+
+      const existingItems = grouped.get(normalizedHour);
+      if (existingItems) {
+        existingItems.push(item);
+      } else {
+        grouped.set(normalizedHour, [item]);
+      }
+    }
+
+    return grouped;
+  }, [historiquePannes]);
+
   const selectedDate = useMemo(
     () => buildDateFromSelection(selectedYear, selectedMonth, selectedDayLabel),
     [selectedDayLabel, selectedMonth, selectedYear],
@@ -193,8 +257,16 @@ function HistoriquePage() {
       return [];
     }
 
-    return historiquePannes.filter((item) => normalizeApiDate(item.date) === selectedDate);
-  }, [historiquePannes, selectedDate]);
+    return detailsByDate.get(selectedDate) ?? [];
+  }, [detailsByDate, selectedDate]);
+
+  const selectedHourDetails = useMemo(() => {
+    if (!selectedHourLabel) {
+      return [];
+    }
+
+    return detailsByHour.get(selectedHourLabel) ?? [];
+  }, [detailsByHour, selectedHourLabel]);
 
   useEffect(() => {
     if (!summary?.period || (selectedMonth && selectedYear)) {
@@ -214,11 +286,47 @@ function HistoriquePage() {
       return;
     }
 
-    if (!selectedDayLabel || !fullTrend.some((point) => point.label === selectedDayLabel)) {
-      const firstNonZeroPoint = fullTrend.find((point) => point.value > 0);
-      setSelectedDayLabel(firstNonZeroPoint?.label ?? fullTrend[0].label);
+    let hasSelectedDay = false;
+    let firstNonZeroLabel = null;
+
+    for (const point of fullTrend) {
+      if (point.label === selectedDayLabel) {
+        hasSelectedDay = true;
+      }
+
+      if (firstNonZeroLabel === null && point.value > 0) {
+        firstNonZeroLabel = point.label;
+      }
+    }
+
+    if (!selectedDayLabel || !hasSelectedDay) {
+      setSelectedDayLabel(firstNonZeroLabel ?? fullTrend[0].label);
     }
   }, [fullTrend, selectedDayLabel]);
+
+  useEffect(() => {
+    if (!hourlyTrend.length) {
+      setSelectedHourLabel(null);
+      return;
+    }
+
+    let hasSelectedHour = false;
+    let firstNonZeroHour = null;
+
+    for (const point of hourlyTrend) {
+      if (point.label === selectedHourLabel) {
+        hasSelectedHour = true;
+      }
+
+      if (firstNonZeroHour === null && point.value > 0) {
+        firstNonZeroHour = point.label;
+      }
+    }
+
+    if (!selectedHourLabel || !hasSelectedHour) {
+      setSelectedHourLabel(firstNonZeroHour ?? hourlyTrend[0].label);
+    }
+  }, [hourlyTrend, selectedHourLabel]);
 
   const linePaths = useMemo(() => {
     if (!fullTrend.length) {
@@ -234,6 +342,20 @@ function HistoriquePage() {
     return buildStepPaths(fullTrend, GRAPH_DIMENSIONS);
   }, [fullTrend]);
 
+  const hourlyLinePaths = useMemo(() => {
+    if (!hourlyTrend.length) {
+      return buildStepPaths(
+        [
+          { label: '00', value: 0 },
+          { label: '01', value: 0 },
+        ],
+        GRAPH_DIMENSIONS,
+      );
+    }
+
+    return buildStepPaths(hourlyTrend, GRAPH_DIMENSIONS);
+  }, [hourlyTrend]);
+
   const yAxisGuides = useMemo(
     () =>
       Y_AXIS_TICKS.map((tick) => {
@@ -246,6 +368,20 @@ function HistoriquePage() {
         return { tick, y };
       }),
     [linePaths.maxValue],
+  );
+
+  const hourlyYAxisGuides = useMemo(
+    () =>
+      Y_AXIS_TICKS.map((tick) => {
+        const y =
+          GRAPH_DIMENSIONS.height -
+          GRAPH_DIMENSIONS.paddingBottom -
+          (tick / hourlyLinePaths.maxValue) *
+            (GRAPH_DIMENSIONS.height - GRAPH_DIMENSIONS.paddingTop - GRAPH_DIMENSIONS.paddingBottom);
+
+        return { tick, y };
+      }),
+    [hourlyLinePaths.maxValue],
   );
 
   const donutSlices = useMemo(() => {
@@ -288,6 +424,10 @@ function HistoriquePage() {
       : categoryBreakdown[0] ?? null;
 
   const activePeriod = selectedPeriod || String(summary?.period || '').slice(0, 7) || undefined;
+  const hasMoreHistory = historiquePannes.length > DEFAULT_HISTORY_ROWS;
+  const visibleHistoriquePannes = isHistoryExpanded
+    ? historiquePannes
+    : historiquePannes.slice(0, DEFAULT_HISTORY_ROWS);
 
   const handleExportPdf = async () => {
     if (loading || !activePeriod || isExportingPdf) {
@@ -307,6 +447,22 @@ function HistoriquePage() {
     }
   };
 
+  const activeDetailItems = detailMode === 'hour' ? selectedHourDetails : selectedDayDetails;
+  const detailCaption =
+    detailMode === 'hour'
+      ? selectedHourLabel
+        ? `Heure selectionnee : ${selectedHourLabel}:00`
+        : "Clique sur un pic du graphe horaire"
+      : selectedDate
+        ? `Jour selectionne : ${selectedDate}`
+        : 'Clique sur un pic du graphe';
+
+  useEffect(() => {
+    if (!hasMoreHistory && isHistoryExpanded) {
+      setIsHistoryExpanded(false);
+    }
+  }, [hasMoreHistory, isHistoryExpanded]);
+
   return (
     <section className="section page-historique">
       <header className="topbar">
@@ -316,8 +472,6 @@ function HistoriquePage() {
         </div>
         <div className="topbar-actions">
           <ImportToolbar onSuccess={reload} />
-          <button className="ghost-button">Exporter</button>
-          <button className="primary-button">Nouvelle analyse</button>
         </div>
       </header>
 
@@ -413,6 +567,11 @@ function HistoriquePage() {
             </div>
           </div>
           <div className="chart">
+            <div className="chart-block">
+              <div className="chart-block-header">
+                <strong>Pannes / jour</strong>
+                <span className="muted">{fullTrend.length} points</span>
+              </div>
             <svg
               width={GRAPH_DIMENSIONS.width}
               height={GRAPH_DIMENSIONS.height}
@@ -468,7 +627,10 @@ function HistoriquePage() {
                     className="chart-point-hitbox"
                     onMouseEnter={() => setHoveredPoint(point)}
                     onMouseLeave={() => setHoveredPoint(null)}
-                    onClick={() => setSelectedDayLabel(point.label)}
+                    onClick={() => {
+                      setSelectedDayLabel(point.label);
+                      setDetailMode('day');
+                    }}
                   />
                 </g>
               ))}
@@ -493,19 +655,115 @@ function HistoriquePage() {
                 <span>Jour {hoveredPoint.label}</span>
               </div>
             )}
+            </div>
+
+            <div className="chart-block chart-block-hourly">
+              <div className="chart-block-header">
+                <strong>Pannes / heure</strong>
+                <span className="muted">Toutes les pannes regroupees sur 24h</span>
+              </div>
+              <svg
+                width={GRAPH_DIMENSIONS.width}
+                height={GRAPH_DIMENSIONS.height}
+                viewBox={`0 0 ${GRAPH_DIMENSIONS.width} ${GRAPH_DIMENSIONS.height}`}
+              >
+                <defs>
+                  <linearGradient id="hourAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#b6f2d8" stopOpacity="0.45" />
+                    <stop offset="100%" stopColor="#0f172a" stopOpacity="0.08" />
+                  </linearGradient>
+                </defs>
+                {hourlyYAxisGuides.map((guide) => (
+                  <g key={`hour-guide-${guide.tick}`}>
+                    <line
+                      x1={GRAPH_DIMENSIONS.paddingLeft}
+                      y1={guide.y}
+                      x2={GRAPH_DIMENSIONS.width - GRAPH_DIMENSIONS.paddingRight}
+                      y2={guide.y}
+                      stroke="rgba(148, 163, 184, 0.18)"
+                      strokeDasharray="4 6"
+                    />
+                    <text
+                      x={GRAPH_DIMENSIONS.paddingLeft - 10}
+                      y={guide.y + 4}
+                      textAnchor="end"
+                      className="chart-axis-label"
+                    >
+                      {guide.tick}
+                    </text>
+                  </g>
+                ))}
+                {hourlyLinePaths.coords.map((point) =>
+                  HOUR_AXIS_TICKS.includes(point.label) ? (
+                    <text
+                      key={`hour-label-${point.label}`}
+                      x={point.x}
+                      y={GRAPH_DIMENSIONS.height - 8}
+                      textAnchor="middle"
+                      className="chart-axis-label"
+                    >
+                      {point.label}h
+                    </text>
+                  ) : null,
+                )}
+                <path d={hourlyLinePaths.area} fill="url(#hourAreaGradient)" />
+                <path
+                  d={hourlyLinePaths.line}
+                  fill="none"
+                  stroke="#b6f2d8"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {hourlyLinePaths.coords.map((point) => (
+                  <g key={`hour-point-${point.label}`}>
+                    {hoveredHourPoint?.label === point.label && (
+                      <>
+                        <circle cx={point.x} cy={point.y} r={10} className="chart-point-glow chart-point-glow-hour" />
+                        <circle cx={point.x} cy={point.y} r={4.5} className="chart-point-active chart-point-active-hour" />
+                      </>
+                    )}
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={9}
+                      className="chart-point-hitbox"
+                      onMouseEnter={() => setHoveredHourPoint(point)}
+                      onMouseLeave={() => setHoveredHourPoint(null)}
+                      onClick={() => {
+                        setSelectedHourLabel(point.label);
+                        setDetailMode('hour');
+                      }}
+                    />
+                  </g>
+                ))}
+              </svg>
+              {hoveredHourPoint && (
+                <div
+                  className="chart-tooltip chart-tooltip-hour"
+                  style={{
+                    left: `${(hoveredHourPoint.x / GRAPH_DIMENSIONS.width) * 100}%`,
+                    top: `${(hoveredHourPoint.y / GRAPH_DIMENSIONS.height) * 100}%`,
+                  }}
+                >
+                  <strong>
+                    {hoveredHourPoint.value} panne{hoveredHourPoint.value > 1 ? 's' : ''}
+                  </strong>
+                  <span>{hoveredHourPoint.label}:00</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="card">
           <div className="card-header">
-            <h3>Details du jour</h3>
-            <span className="muted">
-              {selectedDate ? `Jour selectionne : ${selectedDate}` : 'Clique sur un pic du graphe'}
-            </span>
+            <h3>Details de la selection</h3>
+            <span className="muted">{detailCaption}</span>
           </div>
           <div className="day-details-list">
-            {selectedDayDetails.length ? (
-              selectedDayDetails.map((item, index) => (
+            {activeDetailItems.length ? (
+              activeDetailItems.map((item, index) => (
                 <div
                   key={`${item.equipement}-${item.date}-${item.heure ?? 'sans-heure'}-${index}`}
                   className="day-details-row"
@@ -533,8 +791,16 @@ function HistoriquePage() {
               ))
             ) : (
               <div className="day-details-empty">
-                <strong>Aucune panne pour ce jour</strong>
-                <span className="muted">Selectionne un autre pic pour voir les details.</span>
+                <strong>
+                  {detailMode === 'hour'
+                    ? 'Aucune panne pour cette heure'
+                    : 'Aucune panne pour ce jour'}
+                </strong>
+                <span className="muted">
+                  {detailMode === 'hour'
+                    ? 'Selectionne une autre heure pour voir les details.'
+                    : 'Selectionne un autre pic pour voir les details.'}
+                </span>
               </div>
             )}
           </div>
@@ -615,11 +881,27 @@ function HistoriquePage() {
 
       <div className="card table-card">
         <div className="card-header">
-          <h3>Historique detaille</h3>
-          <span className="muted">Dernieres alertes issues de la base</span>
+          <div>
+            <h3>Historique detaille</h3>
+            <span className="muted">
+              {historiquePannes.length} alerte{historiquePannes.length > 1 ? 's' : ''} sur la
+              periode
+            </span>
+          </div>
+          {hasMoreHistory ? (
+            <button
+              className="table-toggle-button"
+              type="button"
+              onClick={() => setIsHistoryExpanded((previous) => !previous)}
+            >
+              {isHistoryExpanded
+                ? 'Voir moins'
+                : `Voir ${historiquePannes.length - DEFAULT_HISTORY_ROWS} de plus`}
+            </button>
+          ) : null}
         </div>
         <div className="table">
-          {historiquePannes.map((item, index) => (
+          {visibleHistoriquePannes.map((item, index) => (
             <div key={`${item.equipement}-${item.date}-${index}`} className="table-row">
               <div>
                 <strong>{item.equipement}</strong>
@@ -653,6 +935,14 @@ function HistoriquePage() {
             </div>
           )}
         </div>
+        {hasMoreHistory && !isHistoryExpanded ? (
+          <div className="table-footer-hint">
+            <span className="muted">
+              Affichage compact : {DEFAULT_HISTORY_ROWS} lignes visibles sur{' '}
+              {historiquePannes.length}.
+            </span>
+          </div>
+        ) : null}
       </div>
     </section>
   );

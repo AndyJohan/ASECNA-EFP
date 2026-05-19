@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { formatCategoryLabel } from '../constants/filterOptions';
 
 const PAGE_SIZE = { width: 595.28, height: 841.89 };
 const MARGIN = 42;
@@ -17,10 +18,6 @@ function formatPeriodLabel(period) {
 
   const date = new Date(Number(year), Number(month) - 1, 1);
   return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-}
-
-function formatCategoryLabel(category) {
-  return category && category !== 'ALL' ? category : 'Toutes les categories';
 }
 
 function buildFileName(period, category) {
